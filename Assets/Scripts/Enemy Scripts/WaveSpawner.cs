@@ -1,134 +1,97 @@
-﻿using System.Collections;
+﻿using Managers;
+using Pathfinding;
+using System;
+using System.Collections;
 using UnityEngine;
-using UnityEngine.UI;
 
-public class WaveSpawner : MonoBehaviour
+namespace EnemySystem
 {
-    public Wave[] waves;
-
-    [SerializeField] float secondsBetweenWaves = 30f;
-    float countdown = 2f;   //time before first wave spawns
-    [SerializeField] Text waveText;
-    [SerializeField] Text waveTimerText;
-    [SerializeField] float spawnWaveEarlyTimer;
-
-    int waveIndex = 0;
-
-    [HideInInspector] public static int currentAmountEnemies = 0;
-    int enemiesToSpawnCount = 0;
-
-    [SerializeField] AudioClip spawnAudio;
-
-    GameManager gameManager;
-
-    bool wavesDefeated = false;
-
-    void Start()
+    /// <summary>
+    /// Spawns waves of different enemies
+    /// </summary>
+    public class WaveSpawner : MonoBehaviour
     {
-        gameManager = FindObjectOfType<GameManager>();
-        waveText.text = "WAVE 0/" + waves.Length;
-    }
+        [SerializeField]
+        private Pathfinder m_pathfinder;
 
-    void Update()
-    {
-        if (gameManager.IsGameOver())
+        [SerializeField]
+        private Wave[] m_waves;
+
+        [SerializeField]
+        [Tooltip("The countdown, in seconds, before waves begin spawning ")]
+        private float m_countdownDuration;
+
+        [SerializeField]
+        private float m_secondsBetweenWaves;
+
+        [SerializeField]
+        [Tooltip("How many seconds left between waves can the player initiate the next wave")]
+        private float m_waveInitiationCooldown;
+
+        private int m_waveCounter = -1;
+
+        private WaitForSeconds m_delayBetweenWaves;
+
+        public float WaveTimer { get; private set; }
+
+        public event Action OnWaveUpdated;
+
+        private void Awake()
         {
-            enabled = false;
-            return;
+            if (!m_pathfinder)
+                Debug.LogError($"{gameObject.name} doesn't have a reference to the pathfinder.");
+
+            EnemyObjectPool.InitializePool(transform, m_pathfinder);
+            m_delayBetweenWaves = new WaitForSeconds(m_secondsBetweenWaves);
+            WaveTimer = m_countdownDuration;
         }
 
-        if (waveIndex != waves.Length)
+        private void Update()
         {
-            if (countdown <= 0)
+            if (GameManager.IsGameOver && enabled)
             {
-                waveText.text = "WAVE " + (waveIndex + 1).ToString() + "/" + waves.Length;
-                StartCoroutine(SpawnWave());
-                countdown = secondsBetweenWaves;
-                waveIndex++;
-            }
-
-            countdown -= Time.deltaTime;
-            countdown = Mathf.Clamp(countdown, 0f, Mathf.Infinity);
-
-            waveTimerText.text = string.Format("{0:00.00}", countdown);
-        }
-        else
-        {
-            countdown = 0;
-            waveTimerText.text = string.Format("{0:00.00}", 0f);
-
-            if (currentAmountEnemies == 0 && enemiesToSpawnCount == waves[waveIndex - 1].numOfEnemies)
-            {
-                wavesDefeated = true;
                 enabled = false;
+                return;
             }
 
-            return;
-        }
-    }
-
-    IEnumerator SpawnWave()
-    {
-        Wave wave = waves[waveIndex];
-
-        enemiesToSpawnCount = 0;
-
-        if (wave.hasSubWaves)
-        {
-            int subWaveIndex = 0;   //used for going through subWaves array
-
-            int subWaveEnemyCount = 0;  //counter for subWave number of enemies
-
-            while (enemiesToSpawnCount < wave.numOfEnemies)
+            if (m_waveCounter >= m_waves.Length && EnemyObjectPool.Targets.Count == 0)
             {
-                while (subWaveIndex < wave.subWaves.Length)
-                {
-                    Wave.SubWave subWave = wave.subWaves[subWaveIndex];
-
-                    while (subWaveEnemyCount < subWave.numOfEnemiesInSubWave)
-                    {
-                        SpawnEnemy(subWave.subWaveEnemy);
-                        enemiesToSpawnCount++;
-                        currentAmountEnemies++;
-                        subWaveEnemyCount++;
-                        yield return new WaitForSeconds(1f / wave.rate);    //seconds between each enemy in this part
-                    }
-
-                    //If not the last subWave, do the pause
-                    if (subWaveIndex != wave.subWaves.Length - 1)
-                        yield return new WaitForSeconds(subWave.countdownBetweenParts);
-
-                    subWaveIndex++;
-                    subWaveEnemyCount = 0;
-                }
+                GameManager.LevelWon();
+                enabled = false;
+                return;
             }
-        }
-        else
-        {
-            while (enemiesToSpawnCount < wave.numOfEnemies)
+
+            if (WaveTimer <= 0 && m_waveCounter < m_waves.Length)
+                StartCoroutine(Spawn());
+
+            if (InputManager.NextWave() && WaveTimer < m_waveInitiationCooldown)
             {
-                SpawnEnemy(wave.initialEnemyType);
-                enemiesToSpawnCount++;
-                currentAmountEnemies++;
-                yield return new WaitForSeconds(1f / wave.rate);    //seconds between enemies
+                StopCoroutine(Spawn());
+                StartCoroutine(Spawn());
+            }
+
+            WaveTimer -= Time.deltaTime;
+        }
+
+        public string WavesToString() => $"{m_waveCounter + 1}/{m_waves.Length}";
+
+        private IEnumerator Spawn()
+        {
+            m_waveCounter++;
+
+            if (m_waveCounter < m_waves.Length)
+            {
+                OnWaveUpdated?.Invoke();
+
+                Wave wave = m_waves[m_waveCounter];
+
+                WaveTimer = m_secondsBetweenWaves;
+
+                while (!wave.WaveComplete)
+                    yield return new WaitForSeconds(wave.SpawnEnemy());
+
+                yield return m_delayBetweenWaves;
             }
         }
     }
-
-    void SpawnEnemy(GameObject enemy)
-    {
-        GameObject newEnemy = Instantiate(enemy, transform.position, Quaternion.identity);
-        GetComponent<AudioSource>().PlayOneShot(spawnAudio);
-        newEnemy.transform.parent = transform;
-    }
-
-    public void InitiateNextWave()
-    {
-        if (countdown <= spawnWaveEarlyTimer && waveIndex != waves.Length)
-            countdown = 0;
-
-        return;
-    }
-
-    public bool IsWavesDefeated() { return wavesDefeated; }    
 }

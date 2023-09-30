@@ -1,28 +1,43 @@
 ﻿using UnityEngine;
 
-[System.Serializable]
-public class Wave
+namespace EnemySystem
 {
-    public bool hasSubWaves = false;
-
-    [Tooltip("Prefab of first enemies to spawn in wave")]
-    public GameObject initialEnemyType;
-
-    public int numOfEnemies;
-
-    [Tooltip("Enemies per sec")] public float rate;
-    
-    public SubWave[] subWaves;
-
+    /// <summary>
+    /// The structure for how waves of enemies are
+    /// </summary>
     [System.Serializable]
-    public class SubWave
-    {        
-        [Tooltip("If you want wave to have 1 enemy type, place same enemy prefab here")]
-        public GameObject subWaveEnemy;
+    public class Wave
+    {
+        /// <summary>
+        /// The attribute for an enemy to spawn during a part of a wave
+        /// </summary>
+        [System.Serializable]
+        private struct EnemyAttributes
+        {
+            [SerializeField]
+            public EnemyType enemyType;
 
-        [Tooltip("Number of enemies to spawn in this spawn wave, can't be more than numOfEnemies")]
-        public int numOfEnemiesInSubWave = 0;
+            [SerializeField]
+            [Tooltip("The delay after spawning an enemy in seconds")]
+            public float secondsAfterSpawn;
+        }
 
-        [Tooltip("How long of a pause between each subwave in sec, if last part leave as zero")] public float countdownBetweenParts = 1f;        
-    }    
+        [SerializeField]
+        private EnemyAttributes[] m_enemies;
+
+        private int m_enemyToSpawn = 0;
+
+        public bool WaveComplete { get => m_enemyToSpawn == m_enemies.Length; }
+
+        public float SpawnEnemy()
+        {
+            EnemyAttributes spawnedEnemy = m_enemies[m_enemyToSpawn];
+
+            EnemyObjectPool.SpawnEnemy(spawnedEnemy.enemyType);
+
+            m_enemyToSpawn++;
+
+            return spawnedEnemy.secondsAfterSpawn;
+        }
+    }
 }

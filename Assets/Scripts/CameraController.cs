@@ -1,82 +1,97 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
+﻿using Managers;
+using System;
 using UnityEngine;
 
+/// <summary>
+/// Controls the movement of the camera
+/// </summary>
 public class CameraController : MonoBehaviour
 {
-    [SerializeField] float panSpeed = 30f;
-    [SerializeField] float scrollSpeed = 5f;
-    [SerializeField] float windowEdgeBorder = 10f;
+    [Serializable]
+    private struct CoordinateRange
+    {
+        public float min;
+        public float max;
+    }
+
+    [Header("Camera Attributes")]
+    
+    [SerializeField] 
+    private float m_panSpeed;
+
+    [SerializeField]
+    private float m_scrollSpeed;
 
     [Header("Camera Limits")]
-    [SerializeField] float xPositionLeftLimit;
-    [SerializeField] float xPositionRightLimit;
-    [SerializeField] float zUpPositionLimit;
-    [SerializeField] float zBottomPositionLimit;
-    [SerializeField] float zoomOutLimit;
-    [SerializeField] float zoomInLimit;    
+    
+    [SerializeField] 
+    private float m_windowBoundryOffset;
 
-    bool movementEnabled = true;
+    [SerializeField]
+    private CoordinateRange m_xRange;
 
-    GameManager gameManager;
+    [SerializeField]
+    private CoordinateRange m_zoomRange;
 
-    void Awake() => gameManager = FindObjectOfType<GameManager>();
+    [SerializeField]
+    private CoordinateRange m_zRange;
 
-    void Update()
+    private Vector3 m_currentPosition;
+    private Vector3 m_mousePosition;
+
+    private bool m_movementEnabled = true;
+
+    private void Update()
     {
-        if (gameManager.IsGameOver())
-        {
-            enabled = false;
-            return;
-        }
+        if (InputManager.LockCamera())
+            m_movementEnabled = !m_movementEnabled;
 
-        if (Input.GetKeyDown(KeyCode.Q))
-            movementEnabled = !movementEnabled;
-
-        if (!movementEnabled)
+        if (!m_movementEnabled)
             return;
 
         MoveCamera();
     }    
 
-    void MoveCamera()
+    private void MoveCamera()
     {
-        Vector3 position = transform.position;
+        m_currentPosition = transform.position;
+        m_mousePosition = Input.mousePosition;
+        float panDelta = m_panSpeed * Time.deltaTime;
 
-        if (Input.GetKey(KeyCode.W) || Input.mousePosition.y >= Screen.height - windowEdgeBorder)
-            position.z += panSpeed * Time.deltaTime;
-        
-        if (Input.GetKey(KeyCode.S) || Input.mousePosition.y <= windowEdgeBorder)
-            position.z -= panSpeed * Time.deltaTime;
-        
-        if (Input.GetKey(KeyCode.A) || Input.mousePosition.x <= windowEdgeBorder)
-            position.x -= panSpeed * Time.deltaTime;
-        
-        if (Input.GetKey(KeyCode.D) || Input.mousePosition.x >= Screen.width - windowEdgeBorder)
-            position.x += panSpeed * Time.deltaTime;        
+        // Pan up
+        if (InputManager.PanUp() || m_mousePosition.y >= Screen.height - m_windowBoundryOffset)
+            m_currentPosition.z += panDelta;
 
-        position = ClampPan(position);
+        // Pan down
+        if (InputManager.PanDown() || m_mousePosition.y <= m_windowBoundryOffset)
+            m_currentPosition.z -= panDelta;
 
-        position = ScrollWheelMove(position);
+        // Pan left
+        if (InputManager.PanLeft() || m_mousePosition.x <= m_windowBoundryOffset)
+            m_currentPosition.x -= panDelta;
 
-        transform.position = position;
-    }    
+        // Pan right
+        if (InputManager.PanRight() || m_mousePosition.x >= Screen.width - m_windowBoundryOffset)
+            m_currentPosition.x += panDelta;
 
-    Vector3 ClampPan(Vector3 position)
+        ClampPan();
+        Zoom(InputManager.Scroll());
+
+        transform.position = m_currentPosition;
+    }
+    
+    private void ClampPan()
     {
-        position.x = Mathf.Clamp(position.x, xPositionLeftLimit, xPositionRightLimit);
-        position.z = Mathf.Clamp(position.z, zBottomPositionLimit, zUpPositionLimit);
-        return position;
+        m_currentPosition.x = Mathf.Clamp(m_currentPosition.x, m_xRange.min, m_xRange.max);
+        m_currentPosition.z = Mathf.Clamp(m_currentPosition.z, m_zRange.min, m_zRange.max);
     }
 
-    Vector3 ScrollWheelMove(Vector3 position)
+    private void Zoom(float scroll)
     {
-        float scroll = Input.GetAxis("Mouse ScrollWheel");
-
-        position.y -= scroll * 1000 * scrollSpeed * Time.deltaTime;
-        position.y = Mathf.Clamp(position.y, zoomInLimit, zoomOutLimit);
-
-        return position;
+        if (scroll != 0f)
+        {
+            m_currentPosition.y -= scroll * m_scrollSpeed * Time.deltaTime;
+            m_currentPosition.y = Mathf.Clamp(m_currentPosition.y, m_zoomRange.min, m_zoomRange.max);
+        }
     }
 }

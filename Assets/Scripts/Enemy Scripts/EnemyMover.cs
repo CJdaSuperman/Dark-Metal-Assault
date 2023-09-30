@@ -1,43 +1,46 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using Environment;
+using Pathfinding;
+using System;
+using System.Collections;
 using UnityEngine;
 
-public class EnemyMover : MonoBehaviour
+namespace EnemySystem
 {
-    Pathfinder pathfinder;
-
-    [SerializeField] float movementSpeed = 0.4f;
-
-    public int hitPower;
-
-    HealthHandler healthHandler;
-
-    bool pathCompleted = false;
-
-    [SerializeField] ParticleSystem goalParticlePrefab;    
-
-    void Awake() => healthHandler = GetComponent<HealthHandler>();
-
-    void Start() => MoveEnemy();
-
-    void MoveEnemy()
+    /// <summary>
+    /// Handles the movement of an enemy
+    /// </summary>
+    public class EnemyMover : MonoBehaviour
     {
-        pathfinder = FindObjectOfType<Pathfinder>();
-        var path = pathfinder.GetPath();               
-        StartCoroutine(FollowPath(path));        
-    }    
+        [SerializeField]
+        private float m_movementSpeed;
 
-    IEnumerator FollowPath(List<Waypoint> path)
-    {
-        foreach (Waypoint block in path)
+        [SerializeField]
+        private int m_hitPower;
+
+        private Pathfinder m_pathfinder;
+
+        private WaitForSeconds m_delay;
+
+        public bool PathComplete { get; private set; } = false;
+
+        public event Action OnPathCompleted;
+
+        private void Awake() => m_delay = new WaitForSeconds(m_movementSpeed);
+
+        public void SetPathfinder(Pathfinder pathfinder) => m_pathfinder = pathfinder;
+
+        public void Move() => StartCoroutine(FollowPath());
+
+        private IEnumerator FollowPath()
         {
-            transform.position = block.transform.position;
-            yield return new WaitForSeconds(movementSpeed);
+            foreach (Waypoint block in m_pathfinder.Path)
+            {
+                transform.position = block.transform.position;
+                yield return m_delay;
+            }
+
+            PathComplete = true;
+            OnPathCompleted?.Invoke();
         }
-
-        pathCompleted = true;
-        healthHandler.DestroyEnemy(goalParticlePrefab);
-    } 
-
-    public bool IsPathCompleted() { return pathCompleted; }
+    }
 }
